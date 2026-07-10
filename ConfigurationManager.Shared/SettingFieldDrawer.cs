@@ -103,13 +103,7 @@ namespace ConfigurationManager
         public static void DrawCategoryHeader(string text)
         {
             if (_categoryHeaderSkin == null)
-            {
-                _categoryHeaderSkin = GUI.skin.label.CreateCopy();
-                _categoryHeaderSkin.alignment = TextAnchor.UpperCenter;
-                _categoryHeaderSkin.wordWrap = true;
-                _categoryHeaderSkin.stretchWidth = true;
-                _categoryHeaderSkin.fontSize = 14;
-            }
+                _categoryHeaderSkin = CreateReadableHeaderStyle(14);
 
             GUILayout.Label(text, _categoryHeaderSkin);
         }
@@ -118,16 +112,32 @@ namespace ConfigurationManager
         public static bool DrawPluginHeader(GUIContent content, bool isCollapsed)
         {
             if (_pluginHeaderSkin == null)
-            {
-                _pluginHeaderSkin = GUI.skin.label.CreateCopy();
-                _pluginHeaderSkin.alignment = TextAnchor.UpperCenter;
-                _pluginHeaderSkin.wordWrap = true;
-                _pluginHeaderSkin.stretchWidth = true;
-                _pluginHeaderSkin.fontSize = 15;
-            }
+                _pluginHeaderSkin = CreateReadableHeaderStyle(15);
 
             if (isCollapsed) content.text += "\n...";
             return GUILayout.Button(content, _pluginHeaderSkin, GUILayout.ExpandWidth(true));
+        }
+
+        /// <summary>
+        /// Games with a custom GUI.skin often leave label text invisible (same color as background).
+        /// Force high-contrast text so plugin names remain readable.
+        /// </summary>
+        private static GUIStyle CreateReadableHeaderStyle(int fontSize)
+        {
+            var style = GUI.skin.button.CreateCopy();
+            style.alignment = TextAnchor.UpperCenter;
+            style.wordWrap = true;
+            style.stretchWidth = true;
+            style.fontSize = fontSize;
+            style.normal.textColor = Color.white;
+            style.hover.textColor = Color.white;
+            style.active.textColor = Color.white;
+            style.focused.textColor = Color.white;
+            style.onNormal.textColor = Color.white;
+            style.onHover.textColor = Color.white;
+            style.onActive.textColor = Color.white;
+            style.onFocused.textColor = Color.white;
+            return style;
         }
 
         public static bool DrawCurrentDropdown()

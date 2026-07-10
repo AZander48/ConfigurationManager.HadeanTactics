@@ -97,6 +97,7 @@ namespace ConfigurationManager
         private readonly ConfigEntry<bool> _hideSingleSection;
         private readonly ConfigEntry<bool> _pluginConfigCollapsedDefault;
         private bool _showDebug;
+        private bool _rebuildSettingsPending;
 
         /// <inheritdoc />
         public ConfigurationManager()
@@ -115,7 +116,7 @@ namespace ConfigurationManager
                 new ConfigDescription("The shortcut used to toggle the config manager window on and off.\n" +
                                       "The key can be overridden by a game-specific plugin if necessary, in that case this setting is ignored."));
             _hideSingleSection = Config.Bind("General", "Hide single sections", false, new ConfigDescription("Show section title for plugins with only one section"));
-            _pluginConfigCollapsedDefault = Config.Bind("General", "Plugin collapsed default", true, new ConfigDescription("If set to true plugins will be collapsed when opening the configuration manager window"));
+            _pluginConfigCollapsedDefault = Config.Bind("General", "Plugin collapsed default", false, new ConfigDescription("If set to true plugins will be collapsed when opening the configuration manager window"));
         }
 
 #if IL2CPP
@@ -149,10 +150,17 @@ namespace ConfigurationManager
                 if (!InputSystemHelper.IsShortcutDown(_keybind.Value))
                     return;
 
-                DisplayingWindow = !DisplayingWindow;
-                Logger.LogInfo(DisplayingWindow
-                    ? "Configuration Manager opened."
-                    : "Configuration Manager closed.");
+                try
+                {
+                    DisplayingWindow = !DisplayingWindow;
+                    Logger.LogInfo(DisplayingWindow
+                        ? "Configuration Manager opened."
+                        : "Configuration Manager closed.");
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError("Failed to toggle Configuration Manager window: " + ex);
+                }
             });
 
             Logger.LogInfo("Input System hotkey handler started (shortcut: " + _keybind.Value + ").");
@@ -176,8 +184,9 @@ namespace ConfigurationManager
                 {
                     CalculateWindowRect();
 
-                    BuildSettingList();
-
+                    // Defer CollectSettings to Update — FindObjectsOfType / config reflection
+                    // can fail when invoked directly from InputSystem.onAfterUpdate.
+                    _rebuildSettingsPending = true;
                     _focusSearchBox = true;
 
                     // Do through reflection for unity 4 compat
@@ -189,6 +198,7 @@ namespace ConfigurationManager
                 }
                 else
                 {
+                    _rebuildSettingsPending = false;
                     if (!_previousCursorVisible || _previousCursorLockState != 0) // 0 = CursorLockMode.None
                         SetUnlockCursor(_previousCursorLockState, _previousCursorVisible);
                 }
@@ -217,12 +227,23 @@ namespace ConfigurationManager
         /// </summary>
         public void BuildSettingList()
         {
-            SettingSearcher.CollectSettings(out var results, out var modsWithoutSettings, _showDebug);
+            try
+            {
+                SettingSearcher.CollectSettings(out var results, out var modsWithoutSettings, _showDebug);
 
-            _modsWithoutSettings = string.Join(", ", modsWithoutSettings.Select(x => x.TrimStart('!')).OrderBy(x => x).ToArray());
-            _allSettings = results.ToList();
+                _modsWithoutSettings = string.Join(", ", modsWithoutSettings.Select(x => x.TrimStart('!')).OrderBy(x => x).ToArray());
+                _allSettings = results.ToList();
 
-            BuildFilteredSettingList();
+                BuildFilteredSettingList();
+
+                Logger.LogInfo("Settings list built: " + _allSettings.Count + " settings, " + _filteredSetings.Count + " plugins. Without settings: " + _modsWithoutSettings);
+            }
+            catch (Exception ex)
+            {
+                _allSettings = new List<SettingEntryBase>();
+                _filteredSetings = new List<PluginSettingsData>();
+                Logger.LogError("BuildSettingList failed: " + ex);
+            }
         }
 
         private void BuildFilteredSettingList()
@@ -259,6 +280,7 @@ namespace ConfigurationManager
             }
 
             _filteredSetings = results
+                .Where(x => x.PluginInfo != null)
                 .GroupBy(x => x.PluginInfo)
                 .Select(pluginSettings =>
                 {
@@ -394,6 +416,9 @@ namespace ConfigurationManager
 
         private void SettingsWindow(int id)
         {
+            var previousContentColor = GUI.contentColor;
+            GUI.contentColor = Color.white;
+
             DrawWindowHeader();
 
             _settingWindowScrollPos = GUILayout.BeginScrollView(_settingWindowScrollPos, false, true);
@@ -472,6 +497,7 @@ namespace ConfigurationManager
                 DrawTooltip(SettingWindowRect);
 
             GUI.DragWindow();
+            GUI.contentColor = previousContentColor;
         }
 
         private void DrawTips()
@@ -722,6 +748,12 @@ namespace ConfigurationManager
 
         internal void PluginUpdate()
         {
+            if (_rebuildSettingsPending)
+            {
+                _rebuildSettingsPending = false;
+                BuildSettingList();
+            }
+
             if (DisplayingWindow) SetUnlockCursor(0, true);
 
 #if !Mono
