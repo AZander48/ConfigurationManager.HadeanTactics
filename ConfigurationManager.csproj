@@ -1,5 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <Import Condition="Exists('ConfigurationManager.props')" Project="ConfigurationManager.props" />
+
   <PropertyGroup>
     <TargetFramework>net35</TargetFramework>
 
@@ -61,5 +63,12 @@
   </ItemGroup>
 
   <Import Project="ConfigurationManager.Shared\ConfigurationManager.Shared.projitems" Label="Shared" />
+
+  <Target Name="CopyMod" AfterTargets="PostBuildEvent" Condition="'$(HadeanTacticsDir)' != ''">
+    <ItemGroup>
+      <Binaries Include="$(TargetPath)" />
+    </ItemGroup>
+    <Copy SourceFiles="@(Binaries)" DestinationFolder="$(HadeanTacticsDir)/BepInEx/plugins/ConfigurationManager" />
+  </Target>
 
 </Project>
